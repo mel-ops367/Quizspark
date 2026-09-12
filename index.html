@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuizVerse Portal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase (compat build — works with plain <script> tags, no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg-deep:#0a0e1c; --bg-panel:#121a30; --bg-panel-2:#182242; --line:#26315a;
+    --violet:#8b6bff; --cyan:#35d9c4; --gold:#f5b942; --danger:#ff6b7a;
+    --text:#edeff7; --muted:#8b93ac; --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    min-height:100vh; font-family:'Segoe UI',Arial,sans-serif; color:var(--text);
+    background:
+      radial-gradient(circle at 20% 15%, rgba(139,107,255,.16), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(53,217,196,.13), transparent 50%),
+      var(--bg-deep);
+    display:flex; align-items:center; justify-content:center; padding:24px 14px;
+  }
+  h1,h2,h3{font-family:'Segoe UI',Arial,sans-serif;margin:0}
+  .app{width:100%; max-width:680px; position:relative}
+  .badge-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; min-height:32px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px;color:var(--muted)}
+  .brand .ring{width:18px;height:18px;border-radius:50%;background:conic-gradient(from 90deg,var(--violet),var(--cyan),var(--violet));animation:spin 3.2s linear infinite}
+  .sync-pill{font-size:11.5px;color:var(--muted);background:var(--bg-panel);border:1px solid var(--line);padding:5px 11px;border-radius:100px;display:flex;align-items:center;gap:6px}
+  .sync-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan)}
+  .sync-pill.err .dot{background:var(--danger)}
+  .session-pill{font-size:12px;color:var(--muted);background:var(--bg-panel);border:1px solid var(--line);padding:6px 12px;border-radius:100px;display:flex;align-items:center;gap:8px}
+  .session-pill button{background:none;border:none;color:var(--cyan);font-weight:700;font-size:12px;cursor:pointer;padding:0}
+  .toprow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .stage{background:linear-gradient(180deg,var(--bg-panel),var(--bg-panel-2));border:1px solid var(--line);border-radius:var(--radius);padding:30px 28px;box-shadow:0 30px 60px -25px rgba(0,0,0,.6);min-height:300px}
+  .stage.warp-in{animation:warpIn .45s cubic-bezier(.2,.8,.2,1)}
+  @keyframes warpIn{0%{opacity:0;transform:scale(.95) translateY(8px)}100%{opacity:1;transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+  .eyebrow{color:var(--cyan);font-size:12.5px;font-weight:700;margin:0 0 6px}
+  .stage h2{font-size:23px;margin:0 0 8px;font-weight:700}
+  .stage p.sub{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 22px}
+  .btn{font-family:inherit;font-weight:700;font-size:14px;padding:12px 20px;border-radius:12px;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s,opacity .12s}
+  .btn:active{transform:scale(.97)}
+  .btn-primary{background:linear-gradient(120deg,var(--violet),#6a4ee0);color:#fff;box-shadow:0 10px 22px -10px rgba(139,107,255,.6)}
+  .btn-secondary{background:transparent;border:1px solid var(--line);color:var(--text)}
+  .btn-secondary:hover{border-color:var(--cyan)}
+  .btn-ghost{background:none;border:none;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .btn-danger{background:transparent;border:1px solid rgba(255,107,122,.45);color:var(--danger)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+  label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:0 0 6px}
+  input[type=text],input[type=password],input[type=number],select,textarea{
+    width:100%;background:var(--bg-deep);border:1px solid var(--line);color:var(--text);
+    font-family:inherit;font-size:14px;padding:11px 13px;border-radius:10px;outline:none;transition:border-color .15s
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--violet)}
+  .field{margin-bottom:14px}
+  .error-text{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px}
+  .role-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:480px){.role-grid{grid-template-columns:1fr}}
+  .role-card{background:var(--bg-deep);border:1px solid var(--line);border-radius:14px;padding:20px 16px;cursor:pointer;text-align:left;transition:border-color .15s,transform .15s}
+  .role-card:hover{border-color:var(--cyan);transform:translateY(-2px)}
+  .role-card .icon{font-size:24px;margin-bottom:8px;display:block}
+  .role-card h3{font-size:15.5px;margin:0 0 4px}
+  .role-card p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.5}
+  .tabs{display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .tab-btn{background:none;border:none;color:var(--muted);font-weight:700;font-size:13px;padding:9px 4px;cursor:pointer;border-bottom:2px solid transparent;margin-right:12px}
+  .tab-btn.active{color:var(--cyan);border-color:var(--cyan)}
+  .q-card{background:var(--bg-deep);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+  .q-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+  .q-card-head span{font-size:12px;color:var(--cyan);font-weight:700}
+  .remove-q{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12.5px}
+  .remove-q:hover{color:var(--danger)}
+  .opt-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+  .opt-row input[type=radio]{accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0}
+  .opt-row input[type=text]{flex:1}
+  .timer-row{display:flex;align-items:center;gap:12px;background:var(--bg-deep);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:16px;flex-wrap:wrap}
+  .timer-row label{margin:0;flex-shrink:0}
+  .timer-row input,.timer-row select{width:auto}
+  .timer-row .hint{font-size:12px;color:var(--muted)}
+  table.dt{width:100%;border-collapse:collapse;font-size:13px}
+  table.dt th{text-align:left;color:var(--muted);font-weight:700;font-size:11.5px;padding:8px 9px;border-bottom:1px solid var(--line)}
+  table.dt td{padding:8px 9px;border-bottom:1px solid var(--line)}
+  table.dt tr:last-child td{border-bottom:none}
+  .status-chip{font-size:10.5px;padding:3px 8px;border-radius:100px;font-weight:700}
+  .status-chip.completed{background:rgba(53,217,196,.15);color:var(--cyan)}
+  .status-chip.progress{background:rgba(245,185,66,.15);color:var(--gold)}
+  .rank-gold{color:var(--gold);font-weight:700}
+  .empty-row{color:var(--muted);font-size:13px;padding:14px 0;text-align:center}
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+  .stat-card{background:var(--bg-deep);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+  .stat-card b{display:block;font-size:20px;color:var(--cyan)}
+  .stat-card span{font-size:11px;color:var(--muted)}
+  .progress-track{height:6px;background:var(--bg-deep);border-radius:100px;overflow:hidden;margin-bottom:20px}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--violet),var(--cyan));border-radius:100px;transition:width .35s ease}
+  .timer-badge{display:inline-flex;align-items:center;gap:8px;background:var(--bg-deep);border:1px solid var(--line);padding:7px 13px;border-radius:100px;font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:16px}
+  .timer-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);animation:pulse 1s infinite ease-in-out}
+  .timer-badge.low{color:var(--danger)}.timer-badge.low .dot{background:var(--danger)}
+  .quiz-q{font-size:18px;font-weight:700;margin:0 0 18px;line-height:1.4}
+  .q-meta{font-size:11.5px;color:var(--muted);margin-bottom:6px;font-weight:700}
+  .opt-btn{display:block;width:100%;text-align:left;background:var(--bg-deep);border:1px solid var(--line);color:var(--text);font-family:inherit;font-size:14px;padding:13px 15px;border-radius:12px;margin-bottom:9px;cursor:pointer;transition:border-color .15s,background .15s,transform .1s}
+  .opt-btn:hover:not(:disabled){border-color:var(--violet);transform:translateX(2px)}
+  .opt-btn:disabled{cursor:default}
+  .opt-btn.selected{border-color:var(--violet);background:rgba(139,107,255,.14)}
+  .opt-btn.correct{border-color:var(--cyan);background:rgba(53,217,196,.12)}
+  .opt-btn.wrong{border-color:var(--danger);background:rgba(255,107,122,.12)}
+  .read-aloud{background:none;border:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;padding:6px 11px;border-radius:100px;cursor:pointer;margin-bottom:12px}
+  .portal-overlay{position:fixed;inset:0;background:rgba(6,8,16,.9);display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:999;gap:18px}
+  .portal-rings{position:relative;width:110px;height:110px}
+  .portal-rings .r{position:absolute;inset:0;border-radius:50%;border:3px solid transparent}
+  .portal-rings .r1{border-top-color:var(--violet);border-right-color:var(--violet);animation:spin 1.05s linear infinite}
+  .portal-rings .r2{inset:14px;border-bottom-color:var(--cyan);border-left-color:var(--cyan);animation:spin 1.4s linear infinite reverse}
+  .portal-rings .r3{inset:30px;border-top-color:var(--gold);border-left-color:var(--gold);animation:spin .8s linear infinite}
+  .portal-rings .core{position:absolute;inset:42px;border-radius:50%;background:radial-gradient(circle,#fff,var(--cyan) 60%,transparent 75%);filter:blur(1px);animation:pulse 1.1s infinite ease-in-out}
+  .portal-msg{font-size:14px;color:var(--muted);letter-spacing:.2px}
+  .result-wrap{text-align:center;padding:6px 0 4px}
+  .score-ring{width:140px;height:140px;margin:0 auto 20px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;background:conic-gradient(var(--cyan) calc(var(--pct)*1%),var(--bg-deep) 0);transition:background 1s ease}
+  .score-ring::before{content:'';position:absolute;inset:9px;border-radius:50%;background:var(--bg-panel)}
+  .score-ring .num{position:relative;font-size:27px;font-weight:800}
+  .particle{position:absolute;width:6px;height:6px;border-radius:50%;pointer-events:none;opacity:0;animation:burst 900ms ease-out forwards}
+  @keyframes burst{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3)}}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--bg-panel-2);border:1px solid var(--cyan);color:var(--text);padding:11px 18px;border-radius:12px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s,transform .2s;z-index:1200;pointer-events:none;max-width:88vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .footnote{font-size:11.5px;color:var(--muted);margin-top:16px;line-height:1.6}
+  .icon-btn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:100px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+  .live-pill{font-size:11px;font-weight:800;padding:4px 10px;border-radius:100px}
+  .live-pill.on{background:rgba(53,217,196,.15);color:var(--cyan)}
+  .live-pill.off{background:rgba(255,107,122,.15);color:var(--danger)}
+  ::selection{background:var(--violet);color:#fff}
+  #offlineGate{position:fixed;inset:0;background:rgba(5,7,14,.97);z-index:5000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:30px}
+  #offlineGate.show{display:flex}
+  #offlineGate .icon{font-size:44px}
+  #offlineGate h2{font-size:20px;margin:0}
+  #offlineGate p{color:var(--muted);font-size:13.5px;max-width:340px;line-height:1.6;margin:0}
+  .approval-badge{font-size:10.5px;padding:3px 8px;border-radius:100px;font-weight:700;background:rgba(245,185,66,.15);color:var(--gold)}
+  .approval-badge.approved{background:rgba(53,217,196,.15);color:var(--cyan)}
+  .approval-badge.rejected{background:rgba(255,107,122,.15);color:var(--danger)}
+  .waiting-wrap{text-align:center;padding:10px 0}
+  .waiting-dots span{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--violet);margin:0 3px;animation:pulse 1s infinite ease-in-out}
+  .waiting-dots span:nth-child(2){animation-delay:.15s}
+  .waiting-dots span:nth-child(3){animation-delay:.3s}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="badge-row">
+    <div class="brand"><span class="ring"></span> QuizVerse</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div id="syncPill"></div>
+      <div id="sessionPill"></div>
+    </div>
+  </div>
+  <div class="stage warp-in" id="stage"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Offline gate: blocks the whole app and pops up immediately whenever there is no internet connection -->
+<div id="offlineGate">
+  <div class="icon">📡</div>
+  <h2>You're offline</h2>
+  <p>QuizVerse needs an internet connection to check you in and keep everyone's data in sync. You'll get access automatically the moment your connection comes back — no need to refresh.</p>
+  <button class="btn btn-secondary" onclick="checkConnection(true)">Check connection now</button>
+  <div id="bypassField" style="display:none;gap:8px;flex-direction:column;width:100%;max-width:240px">
+    <input type="password" id="bypassCode" placeholder="Enter access code" style="text-align:center" onkeydown="if(event.key==='Enter') tryOfflineBypass()">
+    <button class="btn btn-primary" onclick="tryOfflineBypass()">Unlock offline access</button>
+    <div class="error-text" id="bypassError" style="min-height:14px"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   QuizVerse Portal — merged build
+   Combines: role-based teacher/student portals, question
+   editor, live toggle, timers (per-question or whole-quiz),
+   cloud-synced storage with offline fallback, sound toggle,
+   read-aloud, animated transitions, CSV/Excel export, and a
+   results dashboard with stats + search/filter.
+   ========================================================= */
+
+const CONFIG_KEY = 'quizverse_config_v1';
+const RECORDS_KEY = 'quizverse_records_v1';
+const CACHE_KEY = 'quizverse_local_cache_v1';
+const CLOUD_TIMEOUT_MS = 4000; // never let cloud sync hang the UI
+
+/* ---------------- Firebase ----------------
+   Paste the config object from Firebase Console → Project settings →
+   General → "Your apps" → SDK setup and configuration → Config, right
+   here. Everything below (config storage, question sync, and the
+   student approval workflow) is built on Firestore once this is filled in. */
+const firebaseConfig = {
+  apiKey: "AIzaSyC_WdQdFTiR8HI6MPU7isPrFTYD-3SyQpI",
+  authDomain: "quizsystem-6fab4.firebaseapp.com",
+  projectId: "quizsystem-6fab4",
+  storageBucket: "quizsystem-6fab4.firebasestorage.app",
+  messagingSenderId: "12185904705",
+  appId: "1:12185904705:web:28b8c19f1972e2be09c8c0",
+  measurementId: "G-CWR34M9V8R"
+};
+let db = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}catch(e){ console.warn('Firebase not configured yet — paste your firebaseConfig above.', e); }
+
+// Firestore layout:
+//   quizverse_config / main          -> the single shared quiz config document (cfg)
+//   quizverse_records / {recordId}   -> one document per student attempt/registration
+const CONFIG_DOC = () => db.collection('quizverse_config').doc('main');
+const RECORDS_COL = () => db.collection('quizverse_records');
+
+let cfg = null;       // shared quiz configuration
+let records = [];     // shared student records / scoreboard
+let session = { role:null, teacherAuthed:false, studentName:null, recordId:null };
+let draft = null;     // working copy of cfg while teacher edits
+let quizState = null;
+let soundOn = true;
+
+const stage = document.getElementById('stage');
+const sessionPill = document.getElementById('sessionPill');
+const syncPill = document.getElementById('syncPill');
+const offlineGate = document.getElementById('offlineGate');
+
+/* ---------------- Online/offline gate ----------------
+   navigator.onLine tells us the browser THINKS it has a network interface,
+   but it can still be wrong (captive portals, no real route to the internet),
+   so on top of it we also do a tiny real network probe. Whichever way it's
+   detected, going offline pops the gate immediately and blocks the app;
+   coming back online clears it immediately too, without needing a refresh. */
+let appStarted = false;
+// Lets someone get into the app with zero internet by typing a known code
+// on the offline-gate screen. Change this to your own secret before you
+// hand the file out — anyone who knows it can skip the connectivity check.
+const OFFLINE_BYPASS_CODE = 'CHANGE_ME_1234';
+let offlineBypass = false;
+function showOfflineGate(){
+  if(offlineBypass) return;
+  offlineGate.classList.add('show');
+  const field = document.getElementById('bypassField');
+  if(field) field.style.display = 'none'; // hidden again until the secret gesture is repeated
+}
+function hideOfflineGate(){ offlineGate.classList.remove('show'); resetSecretGesture(); }
+
+/* Hidden gesture to reveal the offline access-code field: right-click any
+   blank area of the offline screen (not a button/input), then press
+   Shift+Enter within a few seconds. There is no visible button for this —
+   it only works via the gesture, and only while the offline screen is shown. */
+let secretGestureArmed = false;
+let secretGestureTimer = null;
+function resetSecretGesture(){
+  secretGestureArmed = false;
+  clearTimeout(secretGestureTimer);
+}
+offlineGate.addEventListener('contextmenu', function(e){
+  e.preventDefault(); // never show the real browser context menu on this screen
+  if(e.target.closest('button, input')) return; // must be blank space, not a control
+  secretGestureArmed = true;
+  clearTimeout(secretGestureTimer);
+  secretGestureTimer = setTimeout(()=>{ secretGestureArmed = false; }, 4000);
+});
+document.addEventListener('keydown', function(e){
+  if(!secretGestureArmed) return;
+  if(!offlineGate.classList.contains('show')){ resetSecretGesture(); return; }
+  if(e.key === 'Enter' && e.shiftKey){
+    e.preventDefault();
+    resetSecretGesture();
+    revealBypassField();
+  }
+});
+function revealBypassField(){
+  const el = document.getElementById('bypassField');
+  el.style.display = 'flex';
+  document.getElementById('bypassCode').focus();
+}
+function tryOfflineBypass(){
+  const val = document.getElementById('bypassCode').value.trim();
+  const errEl = document.getElementById('bypassError');
+  if(!val || val !== OFFLINE_BYPASS_CODE){ errEl.textContent = 'Incorrect code.'; return; }
+  errEl.textContent = '';
+  offlineBypass = true;
+  hideOfflineGate();
+  showToast('Offline access unlocked — using your last saved data.');
+  if(!appStarted){ appStarted = true; boot(); }
+}
+async function probeRealConnectivity(){
+  try{
+    await withTimeout(fetch('https://www.gstatic.com/generate_204', { mode:'no-cors', cache:'no-store' }), 4000);
+    return true;
+  }catch(e){ return false; }
+}
+async function checkConnection(manual){
+  if(!navigator.onLine){ showOfflineGate(); if(manual) showToast('Still offline.'); return false; }
+  const ok = await probeRealConnectivity();
+  if(ok){
+    hideOfflineGate();
+    if(manual) showToast('Back online.');
+    if(!appStarted){ appStarted = true; boot(); }
+  } else {
+    showOfflineGate();
+    if(manual) showToast('Still offline — check your connection.');
+  }
+  return ok;
+}
+window.addEventListener('online', ()=>checkConnection(false));
+window.addEventListener('offline', ()=>{ showOfflineGate(); });
+setInterval(()=>checkConnection(false), 15000);
+
+/* ---------------- Local cache (instant paint, no waiting on network) ---------------- */
+function readCache(){
+  try{ return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); }catch(e){ return null; }
+}
+function writeCache(){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({cfg, records})); }catch(e){}
+}
+
+/* ---------------- Cloud storage helpers (shared, so teacher + students sync) ---------------- */
+function withTimeout(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms))
+  ]);
+}
+async function cloudGetConfig(){
+  if(!db) throw new Error('Firebase not configured');
+  const snap = await withTimeout(CONFIG_DOC().get(), CLOUD_TIMEOUT_MS);
+  return snap.exists ? snap.data() : null;
+}
+async function cloudSaveConfig(c){
+  if(!db) throw new Error('Firebase not configured');
+  await withTimeout(CONFIG_DOC().set(c), CLOUD_TIMEOUT_MS);
+}
+async function cloudGetRecords(){
+  if(!db) throw new Error('Firebase not configured');
+  const snap = await withTimeout(RECORDS_COL().get(), CLOUD_TIMEOUT_MS);
+  return snap.docs.map(d=>d.data());
+}
+async function cloudSaveRecord(record){
+  // Each student is its own Firestore document, keyed by record.id — this is
+  // what lets the teacher's approval and the live scoreboard update in
+  // real time instead of everyone re-writing one giant shared blob.
+  if(!db) throw new Error('Firebase not configured');
+  await withTimeout(RECORDS_COL().doc(record.id).set(record), CLOUD_TIMEOUT_MS);
+}
+async function cloudSaveRecords(list){
+  if(!db) throw new Error('Firebase not configured');
+  const batch = db.batch();
+  list.forEach(r=>batch.set(RECORDS_COL().doc(r.id), r));
+  await withTimeout(batch.commit(), CLOUD_TIMEOUT_MS);
+}
+async function cloudDeleteAllRecords(){
+  if(!db) throw new Error('Firebase not configured');
+  const snap = await withTimeout(RECORDS_COL().get(), CLOUD_TIMEOUT_MS);
+  const batch = db.batch();
+  snap.docs.forEach(d=>batch.delete(d.ref));
+  await withTimeout(batch.commit(), CLOUD_TIMEOUT_MS);
+}
+
+/* ---------------- Live listeners (real-time sync, no polling needed) ---------------- */
+let unsubRecords = null;
+let unsubConfig = null;
+function startLiveConfigSync(){
+  if(!db || unsubConfig) return;
+  unsubConfig = CONFIG_DOC().onSnapshot(snap=>{
+    if(!snap.exists) return;
+    cfg = snap.data();
+    writeCache();
+    setSync('ok');
+    if(session.role==='teacher' && session.teacherAuthed) renderTeacherDashboard(currentTab || 'edit');
+  }, err=>{ console.warn('config listener error', err); setSync('err'); });
+}
+function startLiveRecordsSync(){
+  if(!db || unsubRecords) return;
+  unsubRecords = RECORDS_COL().onSnapshot(snap=>{
+    records = snap.docs.map(d=>d.data());
+    writeCache();
+    setSync('ok');
+    // A student waiting on the "pending approval" screen needs to know the
+    // instant the teacher approves/rejects them, without refreshing.
+    if(session.role==='student' && session.recordId){
+      const mine = records.find(r=>r.id===session.recordId);
+      if(mine) handleOwnRecordUpdate(mine);
+    }
+    // Teacher dashboards (students/approvals/scores tabs) re-render live.
+    if(session.role==='teacher' && session.teacherAuthed && (currentTab==='students' || currentTab==='scores' || currentTab==='approvals')){
+      renderTeacherDashboard(currentTab);
+    }
+  }, err=>{ console.warn('records listener error', err); setSync('err'); });
+}
+
+/* ---------------- Google Sheets live sync (optional, via Apps Script Web App) ---------------- */
+async function pushRecordToSheet(record){
+  if(!cfg.sheetsUrl) return;
+  try{
+    await withTimeout(fetch(cfg.sheetsUrl, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, // avoids a CORS preflight Apps Script can't handle
+      body: JSON.stringify({ action:'upsertRecord', record })
+    }), 6000);
+  }catch(e){ console.warn('Sheets sync failed', e); }
+}
+async function testSheetsConnection(){
+  const url = document.getElementById('sheetsUrl').value.trim();
+  if(!url){ showToast('Enter a Web App URL first.'); return; }
+  const loader = portalLoader('Testing Google Sheets connection…', 200);
+  try{
+    const res = await withTimeout(fetch(url + '?action=getRecords'), 6000);
+    const data = await res.json();
+    await loader.close();
+    showToast('Connected — sheet has ' + (data.records ? data.records.length : 0) + ' record(s).');
+  }catch(e){
+    await loader.close();
+    showToast('Could not connect. Check the URL and deployment settings.');
+  }
+}
+async function importQuestionsFromSheet(){
+  const url = (draft.sheetsUrl||'').trim();
+  if(!url){ showToast('Add a Google Sheets Web App URL first.'); return; }
+  if(!confirm('This replaces the current question list with questions from the sheet. Continue?')) return;
+  const loader = portalLoader('Importing questions…', 250);
+  try{
+    const res = await withTimeout(fetch(url + '?action=getQuestions'), 6000);
+    const data = await res.json();
+    await loader.close();
+    if(!data.questions || !data.questions.length){ showToast('No questions found in the "Questions" sheet tab.'); return; }
+    draft.questions = data.questions.map((q,i)=>({
+      id:'q_'+Date.now()+'_'+i, subject:q.subject||'', text:q.text||'',
+      options:[q.options[0]||'', q.options[1]||'', q.options[2]||'', q.options[3]||''],
+      correct: q.correct||0, marks: q.marks||1
+    }));
+    renderQList();
+    showToast('Imported ' + draft.questions.length + ' question(s) from the sheet.');
+  }catch(e){
+    await loader.close();
+    showToast('Import failed. Check the URL and sheet format.');
+  }
+}
+
+function setSync(status){
+  // status: 'ok' | 'err' | 'syncing'
+  const label = status==='ok' ? 'Cloud synced' : status==='syncing' ? 'Syncing…' : 'Offline — local copy';
+  syncPill.innerHTML = `<div class="sync-pill ${status==='err'?'err':''}"><span class="dot"></span>${label}</div>`;
+}
+
+let saveTimer = null;
+function queueCloudSave(kind){
+  // Debounced so rapid edits (typing) don't spam network calls or block the UI.
+  clearTimeout(saveTimer);
+  setSync('syncing');
+  saveTimer = setTimeout(async ()=>{
+    try{
+      if(kind==='config') await cloudSaveConfig(cfg);
+      else await cloudSaveRecords(records);
+      setSync('ok');
+    }catch(e){ setSync('err'); }
+  }, 350);
+}
+
+/* ---------------- Defaults ---------------- */
+function defaultQuestions(){
+  return [
+    { id:'q1', subject:'', text:'What is the capital of Ghana?', options:['Accra','Kumasi','Tamale','Cape Coast'], correct:0, marks:1 },
+    { id:'q2', subject:'', text:'Which device is used to type text into a computer?', options:['Monitor','Keyboard','Speaker','Printer'], correct:1, marks:1 },
+    { id:'q3', subject:'', text:'What does CPU stand for?', options:['Central Processing Unit','Computer Power Unit','Central Program Utility','Control Processing User'], correct:0, marks:1 }
+  ];
+}
+function defaultConfig(){
+  return {
+    quizTitle: 'My Interactive Quiz',
+    teacherUsername:'', teacherPassword:'',
+    passMark: 50,
+    timerMode: 'perQuestion',      // 'perQuestion' or 'whole'
+    secondsPerQuestion: 20,
+    wholeQuizMinutes: 10,
+    registrationMode: 'open',      // 'open' or 'restricted' (must be pre-registered)
+    requireApproval: true,         // if true, teacher must approve each student before they can start
+    live: true,
+    students: [],
+    questions: defaultQuestions(),
+    sheetsUrl: ''                  // optional Google Apps Script Web App URL for live Sheets sync
+  };
+}
+
+/* ---------------- Sound (WebAudio, no external files so it never blocks on load) ---------------- */
+let actx = null;
+function beep(freq, dur){
+  if(!soundOn) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; o.type = 'sine';
+    g.gain.setValueAtTime(0.16, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  }catch(e){}
+}
+function playCorrect(){ beep(880, 0.18); }
+function playWrong(){ beep(220, 0.22); }
+
+function readAloud(text){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ---------------- Small UI helpers ---------------- */
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : String(str);
+  return d.innerHTML;
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function warp(){
+  stage.classList.remove('warp-in');
+  void stage.offsetWidth;
+  stage.classList.add('warp-in');
+}
+function portalLoader(message, minMs){
+  minMs = minMs || 250;
+  const ov = document.createElement('div');
+  ov.className = 'portal-overlay';
+  ov.innerHTML = `<div class="portal-rings"><div class="r r1"></div><div class="r r2"></div><div class="r r3"></div><div class="core"></div></div><div class="portal-msg">${escapeHtml(message)}</div>`;
+  document.body.appendChild(ov);
+  const start = Date.now();
+  return {
+    close: async ()=>{
+      const elapsed = Date.now() - start;
+      if(elapsed < minMs) await new Promise(r=>setTimeout(r, minMs - elapsed));
+      ov.remove();
+    }
+  };
+}
+function renderSessionPill(){
+  if(session.role==='teacher' && session.teacherAuthed){
+    sessionPill.innerHTML = `<div class="session-pill">👩‍🏫 Teacher <button onclick="logout()">Exit</button></div>`;
+  } else if(session.role==='student' && session.studentName){
+    sessionPill.innerHTML = `<div class="session-pill">🎓 ${escapeHtml(session.studentName)} <button onclick="logout()">Exit</button></div>`;
+  } else {
+    sessionPill.innerHTML = '';
+  }
+}
+function logout(){
+  session = { role:null, teacherAuthed:false, studentName:null, recordId:null };
+  quizState = null;
+  goto('role');
+}
+
+/* ---------------- Router ---------------- */
+function goto(screen, opts){
+  opts = opts || {};
+  renderSessionPill();
+  if(screen==='role') return renderRole();
+  if(screen==='teacherAuth') return renderTeacherAuth();
+  if(screen==='teacherSetup') return renderTeacherSetup();
+  if(screen==='teacherDashboard') return renderTeacherDashboard(opts.tab || 'edit');
+  if(screen==='studentLogin') return renderStudentLogin();
+  if(screen==='studentRegister') return renderStudentRegister();
+  if(screen==='studentWaiting') return renderWaitingApproval();
+  if(screen==='studentRejected') return renderApprovalRejected();
+  if(screen==='quiz') return renderQuiz();
+  if(screen==='result') return renderResult();
+}
+
+/* ---------------- Boot: instant paint from cache, cloud sync in background ---------------- */
+async function boot(){
+  const cached = readCache();
+  if(cached && cached.cfg){
+    cfg = cached.cfg; records = cached.records || [];
+    setSync('offline');
+    goto('role');
+    syncInBackground();
+  } else {
+    const loader = portalLoader('Opening the gateway…', 300);
+    try{
+      cfg = await cloudGetConfig() || defaultConfig();
+      records = await cloudGetRecords();
+      setSync('ok');
+    }catch(e){
+      cfg = defaultConfig(); records = [];
+      setSync('err');
+    }
+    writeCache();
+    await loader.close();
+    goto('role');
+  }
+  startLiveConfigSync();
+  startLiveRecordsSync();
+}
+async function syncInBackground(){
+  try{
+    setSync('syncing');
+    const [remoteCfg, remoteRecords] = await Promise.all([cloudGetConfig(), cloudGetRecords()]);
+    if(remoteCfg){ cfg = remoteCfg; }
+    if(remoteRecords){ records = remoteRecords; }
+    writeCache();
+    setSync('ok');
+    // Re-render current screen silently if we're on a data-driven view
+    if(session.role==='teacher' && session.teacherAuthed) renderTeacherDashboard(currentTab || 'edit');
+  }catch(e){
+    setSync('err');
+  }
+}
+let currentTab = 'edit';
+
+/* ---------------- Screen: Role select ---------------- */
+function renderRole(){
+  stage.innerHTML = `
+    <p class="eyebrow">Welcome</p>
+    <h2>Who's stepping through?</h2>
+    <p class="sub">Choose your role to continue. Teachers set up the quiz, questions and timer. Students register and take it — results sync live to the scoreboard.</p>
+    <div class="role-grid">
+      <button class="role-card" onclick="chooseRole('teacher')">
+        <span class="icon">🧭</span>
+        <h3>I'm a teacher</h3>
+        <p>Create the login, write questions, set the timer, and watch results roll in.</p>
+      </button>
+      <button class="role-card" onclick="chooseRole('student')">
+        <span class="icon">🎓</span>
+        <h3>I'm a student</h3>
+        <p>Log in with the class details, register your name, and take the quiz.</p>
+      </button>
+    </div>
+    <div class="btn-row">
+      <button class="icon-btn" onclick="toggleSound()">${soundOn ? '🔊 Sound On' : '🔇 Sound Off'}</button>
+    </div>`;
+  warp();
+}
+function toggleSound(){ soundOn = !soundOn; renderRole(); }
+
+async function chooseRole(role){
+  session.role = role;
+  if(role==='teacher'){
+    if(cfg && cfg.teacherUsername){ goto('teacherAuth'); }
+    else { draft = JSON.parse(JSON.stringify(defaultConfig())); goto('teacherSetup'); }
+  } else {
+    if(!cfg || !cfg.teacherUsername){ showToast('No quiz has been set up yet — ask your teacher.'); return; }
+    goto('studentLogin');
+  }
+}
+
+/* ---------------- Screen: Teacher first-time setup ---------------- */
+function renderTeacherSetup(){
+  stage.innerHTML = `
+    <p class="eyebrow">Teacher setup</p>
+    <h2>Set up your quiz</h2>
+    <p class="sub">Create the login your students will use, then write the questions and timer below. Everything saves to the shared, cloud-synced scoreboard.</p>
+    <div class="field"><label>Quiz title</label><input type="text" id="setupTitle" value="${escapeHtml(draft.quizTitle)}"></div>
+    <div class="field"><label>Class username</label><input type="text" id="setupUser" placeholder="e.g. room204"></div>
+    <div class="field"><label>Class password</label><input type="password" id="setupPass" placeholder="e.g. gateway-open"></div>
+    ${timerSettingsHtml(draft)}
+    <div id="qList"></div>
+    <button class="btn btn-secondary" onclick="addQuestion()">+ Add question</button>
+    <div class="error-text" id="setupError"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveSetup()">Open the gateway</button>
+      <button class="btn-ghost" onclick="goto('role')">Back</button>
+    </div>`;
+  renderQList();
+  bindTimerModeToggle();
+  warp();
+}
+
+function timerSettingsHtml(d){
+  return `
+    <div class="timer-row">
+      <label style="margin-bottom:0">Timer mode</label>
+      <select id="timerMode">
+        <option value="perQuestion" ${d.timerMode==='perQuestion'?'selected':''}>Per question (auto-advance)</option>
+        <option value="whole" ${d.timerMode==='whole'?'selected':''}>Whole quiz (student navigates freely)</option>
+      </select>
+      <span class="hint">Per question: a countdown per question, locks in and moves on. Whole quiz: one overall countdown.</span>
+    </div>
+    <div class="timer-row" id="perQRow" style="${d.timerMode==='whole'?'display:none':''}">
+      <label style="margin-bottom:0">Seconds per question</label>
+      <input type="number" id="secondsPerQuestion" min="5" max="300" value="${d.secondsPerQuestion}">
+    </div>
+    <div class="timer-row" id="wholeRow" style="${d.timerMode==='perQuestion'?'display:none':''}">
+      <label style="margin-bottom:0">Total minutes</label>
+      <input type="number" id="wholeQuizMinutes" min="1" max="180" value="${d.wholeQuizMinutes}">
+    </div>
+    <div class="timer-row">
+      <label style="margin-bottom:0">Pass mark (%)</label>
+      <input type="number" id="passMark" min="0" max="100" value="${d.passMark}">
+      <label style="margin-bottom:0;margin-left:8px">Student registration</label>
+      <select id="registrationMode">
+        <option value="open" ${d.registrationMode==='open'?'selected':''}>Open — any name may join</option>
+        <option value="restricted" ${d.registrationMode==='restricted'?'selected':''}>Restricted — name must be pre-registered</option>
+      </select>
+    </div>
+    <div class="timer-row">
+      <label style="margin-bottom:0">Teacher approval</label>
+      <select id="requireApproval">
+        <option value="yes" ${d.requireApproval!==false?'selected':''}>Required — students wait until I approve them</option>
+        <option value="no" ${d.requireApproval===false?'selected':''}>Not required — students start immediately</option>
+      </select>
+      <span class="hint">When required, a new student sits on a "waiting" screen until you approve them in the Approvals tab.</span>
+    </div>`;
+}
+function bindTimerModeToggle(){
+  const sel = document.getElementById('timerMode');
+  if(!sel) return;
+  sel.addEventListener('change', ()=>{
+    document.getElementById('perQRow').style.display = sel.value==='whole' ? 'none' : '';
+    document.getElementById('wholeRow').style.display = sel.value==='perQuestion' ? 'none' : '';
+  });
+}
+
+function renderQList(){
+  const qList = document.getElementById('qList');
+  if(!qList) return;
+  qList.innerHTML = draft.questions.map((q, qi) => `
+    <div class="q-card">
+      <div class="q-card-head">
+        <span>Question ${qi+1}</span>
+        ${draft.questions.length > 1 ? `<button class="remove-q" onclick="removeQuestion(${qi})">Remove</button>` : ''}
+      </div>
+      <div class="field">
+        <input type="text" placeholder="Question text" value="${escapeHtml(q.text)}" oninput="draft.questions[${qi}].text=this.value">
+      </div>
+      <div class="field">
+        <input type="text" placeholder="Subject / topic (optional)" value="${escapeHtml(q.subject||'')}" oninput="draft.questions[${qi}].subject=this.value">
+      </div>
+      ${q.options.map((opt, oi) => `
+        <div class="opt-row">
+          <input type="radio" name="correct-${qi}" ${q.correct===oi ? 'checked' : ''} onchange="draft.questions[${qi}].correct=${oi}">
+          <input type="text" placeholder="Option ${oi+1}" value="${escapeHtml(opt)}" oninput="draft.questions[${qi}].options[${oi}]=this.value">
+        </div>`).join('')}
+      <div class="field" style="margin-top:8px;max-width:140px">
+        <label>Marks</label>
+        <input type="number" min="1" value="${q.marks||1}" oninput="draft.questions[${qi}].marks=parseInt(this.value,10)||1">
+      </div>
+    </div>`).join('');
+}
+function addQuestion(){
+  draft.questions.push({ id:'q_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), subject:'', text:'', options:['','','',''], correct:0, marks:1 });
+  renderQList();
+}
+function removeQuestion(qi){ draft.questions.splice(qi,1); renderQList(); }
+
+function validateQuestions(qs){
+  if(!qs.length) return 'Add at least one question.';
+  for(const q of qs){
+    if(!q.text.trim()) return 'Every question needs text.';
+    if(q.options.some(o=>!o.trim())) return 'Every option needs text.';
+  }
+  return null;
+}
+function readTimerFieldsInto(target){
+  target.timerMode = document.getElementById('timerMode').value;
+  target.secondsPerQuestion = parseInt(document.getElementById('secondsPerQuestion').value,10) || 20;
+  target.wholeQuizMinutes = parseInt(document.getElementById('wholeQuizMinutes').value,10) || 10;
+  target.passMark = Math.min(100, Math.max(0, parseInt(document.getElementById('passMark').value,10) || 50));
+  target.registrationMode = document.getElementById('registrationMode').value;
+  target.requireApproval = document.getElementById('requireApproval').value === 'yes';
+}
+
+async function saveSetup(){
+  const user = document.getElementById('setupUser').value.trim();
+  const pass = document.getElementById('setupPass').value.trim();
+  const title = document.getElementById('setupTitle').value.trim();
+  const errEl = document.getElementById('setupError');
+  if(!user || !pass){ errEl.textContent = 'Username and password are both required.'; return; }
+  const qErr = validateQuestions(draft.questions);
+  if(qErr){ errEl.textContent = qErr; return; }
+  errEl.textContent = '';
+  readTimerFieldsInto(draft);
+  draft.quizTitle = title || 'My Interactive Quiz';
+  draft.teacherUsername = user; draft.teacherPassword = pass;
+  draft.students = draft.students || []; draft.live = true;
+
+  const loader = portalLoader('Sealing the gateway…', 300);
+  cfg = draft;
+  writeCache();
+  try{ await cloudSaveConfig(cfg); setSync('ok'); }
+  catch(e){ setSync('err'); showToast('Saved locally — will sync when the connection is back.'); }
+  await loader.close();
+  session.teacherAuthed = true;
+  showToast('Quiz created — login is ready for students.');
+  goto('teacherDashboard');
+}
+
+/* ---------------- Screen: Teacher login (existing config) ---------------- */
+function renderTeacherAuth(){
+  stage.innerHTML = `
+    <p class="eyebrow">Teacher login</p>
+    <h2>Welcome back</h2>
+    <p class="sub">Enter the username and password you created for this quiz.</p>
+    <div class="field"><label>Username</label><input type="text" id="authUser"></div>
+    <div class="field"><label>Password</label><input type="password" id="authPass"></div>
+    <div class="error-text" id="authError"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="teacherLogin()">Enter</button>
+      <button class="btn-ghost" onclick="goto('role')">Back</button>
+    </div>`;
+  warp();
+  document.getElementById('authPass').addEventListener('keydown', e=>{ if(e.key==='Enter') teacherLogin(); });
+}
+async function teacherLogin(){
+  const user = document.getElementById('authUser').value.trim();
+  const pass = document.getElementById('authPass').value.trim();
+  if(cfg && cfg.teacherUsername===user && cfg.teacherPassword===pass){
+    session.teacherAuthed = true;
+    draft = JSON.parse(JSON.stringify(cfg));
+    goto('teacherDashboard');
+  } else {
+    document.getElementById('authError').textContent = 'Username or password is incorrect.';
+  }
+}
+
+/* ---------------- Screen: Teacher dashboard ---------------- */
+function renderTeacherDashboard(tab){
+  currentTab = tab;
+  stage.innerHTML = `
+    <p class="eyebrow">Teacher dashboard</p>
+    <div class="toprow" style="margin-bottom:6px">
+      <h2 style="font-size:20px">${escapeHtml(cfg.quizTitle)}</h2>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="live-pill ${cfg.live?'on':'off'}">${cfg.live ? '🟢 Live' : '⏸ Paused'}</span>
+        <button class="btn btn-danger" style="padding:6px 12px;font-size:12.5px" onclick="logoutAndDeleteAccount()">🚪 Log out &amp; delete account</button>
+      </div>
+    </div>
+    <p class="sub">Class login: <strong>${escapeHtml(cfg.teacherUsername)}</strong> / <strong>${escapeHtml(cfg.teacherPassword)}</strong> — share this with students.</p>
+    <div class="tabs">
+      <button class="tab-btn ${tab==='edit'?'active':''}" onclick="goto('teacherDashboard',{tab:'edit'})">Edit quiz</button>
+      <button class="tab-btn ${tab==='approvals'?'active':''}" onclick="goto('teacherDashboard',{tab:'approvals'})">Approvals${(()=>{const n=records.filter(r=>r.approval==='pending').length; return n ? ` (${n})` : '';})()}</button>
+      <button class="tab-btn ${tab==='students'?'active':''}" onclick="goto('teacherDashboard',{tab:'students'})">Students</button>
+      <button class="tab-btn ${tab==='scores'?'active':''}" onclick="goto('teacherDashboard',{tab:'scores'})">Scoreboard</button>
+    </div>
+    <div id="dashBody"></div>`;
+  const body = document.getElementById('dashBody');
+
+  if(tab==='edit'){
+    body.innerHTML = `
+      <div class="field"><label>Quiz title</label><input type="text" id="setupTitle" value="${escapeHtml(draft.quizTitle)}"></div>
+      ${timerSettingsHtml(draft)}
+      <div class="timer-row">
+        <label style="margin-bottom:0;flex-basis:100%">Google Sheets Web App URL (optional — live scoreboard sync)</label>
+        <input type="text" id="sheetsUrl" placeholder="https://script.google.com/macros/s/.../exec" style="flex:1;min-width:220px" value="${escapeHtml(draft.sheetsUrl||'')}" oninput="draft.sheetsUrl=this.value">
+      </div>
+      <div class="btn-row" style="margin-top:0;margin-bottom:16px">
+        <button class="btn btn-secondary" onclick="testSheetsConnection()">Test connection</button>
+        <button class="btn btn-secondary" onclick="importQuestionsFromSheet()">⬇️ Import questions from sheet</button>
+      </div>
+      <div id="qList"></div>
+      <button class="btn btn-secondary" onclick="addQuestion()">+ Add question</button>
+      <div class="error-text" id="setupError"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="updateQuiz()">Save changes</button>
+        <button class="btn ${cfg.live?'btn-danger':'btn-secondary'}" onclick="toggleLive()">${cfg.live ? '⏸ Pause quiz' : '▶️ Go live'}</button>
+        <button class="btn btn-danger" onclick="resetGateway()">Reset entire gateway</button>
+      </div>`;
+    renderQList();
+    bindTimerModeToggle();
+  } else if(tab==='students'){
+    body.innerHTML = `
+      <p class="sub" style="margin-bottom:14px">Pre-register students here if you want to restrict the quiz to known names (see Registration setting under Edit quiz).</p>
+      <div class="timer-row">
+        <input type="text" id="regName" placeholder="Student full name" style="flex:1">
+        <button class="btn btn-primary" onclick="registerStudent()">➕ Register</button>
+      </div>
+      <div id="studentsList"></div>`;
+    renderStudentsList();
+  } else if(tab==='approvals'){
+    renderApprovalsTab();
+  } else {
+    renderScoresTab();
+  }
+  warp();
+}
+
+function renderStudentsList(){
+  const wrap = document.getElementById('studentsList');
+  if(!wrap) return;
+  const list = cfg.students || [];
+  wrap.innerHTML = list.length ? `<table class="dt"><tr><th>Name</th><th>Registered</th><th></th></tr>${
+    list.map((s,i)=>`<tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.date)}</td><td><button class="remove-q" onclick="deleteStudent(${i})">Remove</button></td></tr>`).join('')
+  }</table>` : `<p class="empty-row">No students registered yet.</p>`;
+}
+async function registerStudent(){
+  const el = document.getElementById('regName');
+  const n = el.value.trim();
+  if(!n) return showToast('Enter a student name.');
+  cfg.students = cfg.students || [];
+  if(cfg.students.some(x=>x.name.toLowerCase()===n.toLowerCase())) return showToast('That student is already registered.');
+  cfg.students.push({ name:n, date:new Date().toLocaleString() });
+  el.value = '';
+  writeCache(); queueCloudSave('config');
+  renderStudentsList();
+}
+function deleteStudent(i){
+  if(!confirm('Remove this student?')) return;
+  cfg.students.splice(i,1);
+  writeCache(); queueCloudSave('config');
+  renderStudentsList();
+}
+
+/* ---------------- Teacher: approve/reject students before they can start ---------------- */
+function renderApprovalsTab(){
+  const body = document.getElementById('dashBody');
+  const pending = records.filter(r=>r.approval==='pending');
+  const decided = records.filter(r=>r.approval==='approved' || r.approval==='rejected');
+  body.innerHTML = `
+    <p class="sub" style="margin-bottom:14px">Students wait here until you approve them (only when "Teacher approval" is set to Required under Edit quiz). Approving lets their quiz start immediately on their device.</p>
+    ${pending.length ? `
+      <table class="dt" style="margin-bottom:20px">
+        <tr><th>Student</th><th>Requested</th><th></th></tr>
+        ${pending.map(r=>`
+          <tr>
+            <td>${escapeHtml(r.name)}</td>
+            <td>${escapeHtml(r.date)}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-primary" style="padding:6px 12px;font-size:12.5px" onclick="approveRecord('${r.id}','approved')">✔ Approve</button>
+              <button class="btn btn-danger" style="padding:6px 12px;font-size:12.5px" onclick="approveRecord('${r.id}','rejected')">✕ Reject</button>
+            </td>
+          </tr>`).join('')}
+      </table>` : `<p class="empty-row">No one is waiting for approval right now.</p>`}
+    ${decided.length ? `
+      <p class="q-meta" style="margin-bottom:8px">Already decided</p>
+      <table class="dt">
+        <tr><th>Student</th><th>Decision</th></tr>
+        ${decided.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td><span class="approval-badge ${r.approval}">${r.approval}</span></td></tr>`).join('')}
+      </table>` : ''}`;
+}
+async function approveRecord(id, decision){
+  const rec = records.find(r=>r.id===id);
+  if(!rec) return;
+  rec.approval = decision;
+  writeCache();
+  const loader = portalLoader(decision==='approved' ? 'Approving student…' : 'Rejecting…', 150);
+  try{ await cloudSaveRecord(rec); setSync('ok'); }catch(e){ setSync('err'); showToast('Saved locally — will sync when back online.'); }
+  await loader.close();
+  showToast(decision==='approved' ? escapeHtml(rec.name)+' approved.' : escapeHtml(rec.name)+' rejected.');
+  renderApprovalsTab();
+}
+
+async function toggleLive(){
+  cfg.live = !cfg.live;
+  writeCache();
+  const loader = portalLoader(cfg.live ? 'Opening the gateway…' : 'Pausing the gateway…', 200);
+  try{ await cloudSaveConfig(cfg); setSync('ok'); }catch(e){ setSync('err'); }
+  await loader.close();
+  renderTeacherDashboard('edit');
+}
+
+async function updateQuiz(){
+  const errEl = document.getElementById('setupError');
+  const qErr = validateQuestions(draft.questions);
+  if(qErr){ errEl.textContent = qErr; return; }
+  errEl.textContent = '';
+  draft.quizTitle = document.getElementById('setupTitle').value.trim() || 'My Interactive Quiz';
+  readTimerFieldsInto(draft);
+  cfg = Object.assign({}, cfg, draft, { teacherUsername: cfg.teacherUsername, teacherPassword: cfg.teacherPassword, students: cfg.students, live: cfg.live });
+  writeCache();
+  const loader = portalLoader('Saving changes…', 200);
+  try{ await cloudSaveConfig(cfg); setSync('ok'); showToast('Quiz updated.'); }
+  catch(e){ setSync('err'); showToast('Saved locally — will sync when back online.'); }
+  await loader.close();
+  goto('teacherDashboard', {tab:'edit'});
+}
+
+/* Logs the signed-in teacher out AND permanently deletes their account —
+   the login, quiz, students and every score are wiped from both the local
+   cache and the cloud. This is separate from "Reset entire gateway" below:
+   it's always visible in the dashboard header (not just the Edit tab), and
+   it also ends the session and returns to the role screen. */
+async function logoutAndDeleteAccount(){
+  if(!confirm('This logs you out and permanently deletes your teacher account — the quiz, login, students and every score. This cannot be undone. Continue?')) return;
+  const loader = portalLoader('Deleting your account…', 250);
+  cfg = defaultConfig();
+  records = [];
+  writeCache();
+  try{
+    await cloudSaveConfig(cfg);
+    await cloudDeleteAllRecords();
+    setSync('ok');
+  }catch(e){ setSync('err'); }
+  await loader.close();
+  draft = null;
+  session = { role:null, teacherAuthed:false, studentName:null, recordId:null };
+  showToast('Your account has been deleted and you have been logged out.');
+  goto('role');
+}
+
+async function resetGateway(){
+  if(!confirm('This deletes the quiz, login, students and every score. Continue?')) return;
+  const loader = portalLoader('Resetting…', 200);
+  cfg = defaultConfig();
+  records = [];
+  writeCache();
+  try{
+    await cloudSaveConfig(cfg);
+    await cloudDeleteAllRecords();
+    setSync('ok');
+  }catch(e){ setSync('err'); }
+  await loader.close();
+  draft = null;
+  session = { role:null, teacherAuthed:false, studentName:null, recordId:null };
+  showToast('Gateway reset.');
+  goto('role');
+}
+
+function renderScoresTab(){
+  const body = document.getElementById('dashBody');
+  const completed = records.filter(r=>r.status==='completed');
+  const avg = completed.length ? Math.round(completed.reduce((a,r)=>a+r.percent,0)/completed.length) : 0;
+  const passRate = completed.length ? Math.round(completed.filter(r=>r.percent>=cfg.passMark).length/completed.length*100) : 0;
+  const sorted = [...records].sort((a,b)=>{
+    if(a.status !== b.status) return a.status==='completed' ? -1 : 1;
+    return (b.percent||0) - (a.percent||0);
+  });
+  body.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><b>${records.length}</b><span>Total learners</span></div>
+      <div class="stat-card"><b>${avg}%</b><span>Average score</span></div>
+      <div class="stat-card"><b>${passRate}%</b><span>Pass rate</span></div>
+      <div class="stat-card"><b>${completed.length}</b><span>Completed</span></div>
+    </div>
+    <div class="field"><input type="text" id="scoreSearch" placeholder="Search learner name…"></div>
+    <div style="overflow-x:auto">
+      <table class="dt" id="scoreTable">
+        <thead><tr><th>#</th><th>Student</th><th>Score</th><th>%</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${scoreRowsHtml(sorted)}</tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="exportExcel()">⬇️ Export Excel (.xlsx)</button>
+      <button class="btn btn-secondary" onclick="exportCSV()">⬇️ Export CSV</button>
+      <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+      <button class="btn btn-secondary" onclick="refreshScores()">↻ Refresh</button>
+    </div>`;
+  document.getElementById('scoreSearch').addEventListener('input', (e)=>{
+    const q = e.target.value.trim().toLowerCase();
+    const filtered = sorted.filter(r=>r.name.toLowerCase().includes(q));
+    document.querySelector('#scoreTable tbody').innerHTML = scoreRowsHtml(filtered);
+  });
+}
+function scoreRowsHtml(list){
+  if(!list.length) return `<tr><td colspan="6" class="empty-row">No students have registered yet.</td></tr>`;
+  return list.map((r,i)=>`
+    <tr>
+      <td class="${i===0 && r.status==='completed' ? 'rank-gold' : ''}">${i+1}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${r.status==='completed' ? r.score+' / '+r.total : '—'}</td>
+      <td>${r.status==='completed' ? r.percent+'%' : '—'}</td>
+      <td><span class="status-chip ${r.status==='completed'?'completed':'progress'}">${r.status==='completed'?'Completed':r.status==='awaiting-approval'?'Awaiting approval':'In progress'}</span></td>
+      <td>${escapeHtml(r.date)}</td>
+    </tr>`).join('');
+}
+async function refreshScores(){
+  const loader = portalLoader('Refreshing scoreboard…', 200);
+  try{ records = await cloudGetRecords(); writeCache(); setSync('ok'); }
+  catch(e){ setSync('err'); }
+  await loader.close();
+  renderScoresTab();
+}
+function exportCSV(){
+  const rows = [['Student Name','Score','Total','Percentage','Status','Date'], ...records.map(r=>[
+    r.name, r.status==='completed'?r.score:'', r.status==='completed'?r.total:'', r.status==='completed'?r.percent+'%':'', r.status, r.date
+  ])];
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = (cfg.quizTitle || 'quiz') + '_results.csv';
+  a.click();
+  showToast('CSV downloaded.');
+}
+function exportExcel(){
+  const rows = [['Student Name','Score','Total Questions','Percentage','Status','Date']];
+  records.forEach(r=>rows.push([r.name, r.status==='completed'?r.score:'', r.status==='completed'?r.total:'', r.status==='completed'?r.percent+'%':'', r.status, r.date]));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:22},{wch:8},{wch:14},{wch:12},{wch:14},{wch:22}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Scoreboard');
+  XLSX.writeFile(wb, (cfg.quizTitle || 'quiz') + '_scoreboard.xlsx');
+  showToast('Spreadsheet downloaded.');
+}
+
+/* ---------------- Screen: Student login (class credentials) ---------------- */
+function renderStudentLogin(){
+  stage.innerHTML = `
+    <p class="eyebrow">Step 1 of 2 · Class login</p>
+    <h2>Enter the class login</h2>
+    <p class="sub">Ask your teacher for the username and password they set up for this quiz.</p>
+    <div class="field"><label>Username</label><input type="text" id="stuUser"></div>
+    <div class="field"><label>Password</label><input type="password" id="stuPass"></div>
+    <div class="error-text" id="stuError"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="studentLogin()">Continue</button>
+      <button class="btn-ghost" onclick="goto('role')">Back</button>
+    </div>`;
+  warp();
+}
+async function studentLogin(){
+  const user = document.getElementById('stuUser').value.trim();
+  const pass = document.getElementById('stuPass').value.trim();
+  const errEl = document.getElementById('stuError');
+  if(!cfg || !cfg.teacherUsername){ errEl.textContent = 'No quiz has been set up yet — ask your teacher.'; return; }
+  if(cfg.teacherUsername !== user || cfg.teacherPassword !== pass){ errEl.textContent = 'That username or password is incorrect.'; return; }
+  if(!cfg.live){ errEl.textContent = 'This quiz is currently paused by the teacher.'; return; }
+  if(!cfg.questions || !cfg.questions.length){ errEl.textContent = 'The teacher has not added any questions yet.'; return; }
+  const loader = portalLoader('Login accepted…', 250);
+  await loader.close();
+  goto('studentRegister');
+}
+
+/* ---------------- Screen: Student registration ---------------- */
+function renderStudentRegister(){
+  stage.innerHTML = `
+    <p class="eyebrow">Step 2 of 2 · Registration</p>
+    <h2>What's your name?</h2>
+    <p class="sub">Your name is saved to the class scoreboard now, so your teacher can see who's taking it.</p>
+    <div class="field"><label>Full name</label><input type="text" id="stuName" placeholder="e.g. Jordan Lee"></div>
+    <div class="error-text" id="nameError"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="registerAndStart()">Register and start</button>
+      <button class="btn-ghost" onclick="goto('role')">Back</button>
+    </div>`;
+  warp();
+  document.getElementById('stuName').addEventListener('keydown', e=>{ if(e.key==='Enter') registerAndStart(); });
+}
+async function registerAndStart(){
+  const name = document.getElementById('stuName').value.trim();
+  const errEl = document.getElementById('nameError');
+  if(!name){ errEl.textContent = 'Enter your name to continue.'; return; }
+  if(cfg.registrationMode === 'restricted'){
+    const known = (cfg.students||[]).some(s=>s.name.toLowerCase()===name.toLowerCase());
+    if(!known){ errEl.textContent = 'This name is not registered. Ask your teacher to register you first.'; return; }
+  }
+  const needsApproval = cfg.requireApproval !== false;
+  const record = {
+    id: Date.now()+'-'+Math.random().toString(36).slice(2,7), name,
+    score:null, total:null, percent:null,
+    status: needsApproval ? 'awaiting-approval' : 'in-progress',
+    approval: needsApproval ? 'pending' : 'approved',
+    date: new Date().toLocaleString()
+  };
+  records.push(record);
+  writeCache();
+  const loader = portalLoader(needsApproval ? 'Sending your details to the teacher…' : 'Registering you in the scoreboard…', 300);
+  try{ await cloudSaveRecord(record); setSync('ok'); }catch(e){ setSync('err'); }
+  pushRecordToSheet(record); // fire-and-forget, never blocks the student
+  await loader.close();
+  session.studentName = name;
+  session.recordId = record.id;
+
+  if(needsApproval){ goto('studentWaiting'); }
+  else { startQuizForStudent(); }
+}
+
+/* ---------------- Screen: Waiting for teacher approval ---------------- */
+function renderWaitingApproval(){
+  stage.innerHTML = `
+    <div class="waiting-wrap">
+      <p class="eyebrow">Almost there</p>
+      <h2>Waiting for your teacher</h2>
+      <p class="sub">Your name has been sent to <strong>${escapeHtml(cfg.teacherUsername)}</strong>. The quiz will start automatically the moment you're approved — keep this tab open.</p>
+      <p class="waiting-dots" style="margin:18px 0"><span></span><span></span><span></span></p>
+      <div class="btn-row" style="justify-content:center">
+        <button class="btn-ghost" onclick="logout()">Cancel and exit</button>
+      </div>
+    </div>`;
+  warp();
+}
+
+/* ---------------- Screen: Approval rejected ---------------- */
+function renderApprovalRejected(){
+  stage.innerHTML = `
+    <p class="eyebrow">Not approved</p>
+    <h2>Your teacher didn't approve this attempt</h2>
+    <p class="sub">Check with ${escapeHtml(cfg.teacherUsername||'your teacher')} about why, then you're welcome to try registering again.</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="logout()">Back to start</button>
+    </div>`;
+  warp();
+}
+
+/* Called from the live Firestore listener when the logged-in student's own
+   record document changes — this is what makes approval feel instant. */
+function handleOwnRecordUpdate(record){
+  if(session.role !== 'student' || quizState) return; // already mid-quiz or not a student — ignore
+  if(record.approval === 'approved' && record.status === 'awaiting-approval'){
+    record.status = 'in-progress';
+    startQuizForStudent();
+  } else if(record.approval === 'rejected'){
+    goto('studentRejected');
+  }
+}
+
+function startQuizForStudent(){
+  const qs = cfg.questions;
+  quizState = {
+    questions: qs, index:0, answers: Array(qs.length).fill(null),
+    timerMode: cfg.timerMode,
+    timeLeft: cfg.timerMode==='perQuestion' ? cfg.secondsPerQuestion : cfg.wholeQuizMinutes*60,
+    timerHandle:null, answered:false, correctCount:0
+  };
+  goto('quiz');
+  startTimer();
+}
+
+/* ---------------- Screen: Quiz ---------------- */
+function renderQuiz(){
+  const q = quizState.questions[quizState.index];
+  const pct = Math.round((quizState.index / quizState.questions.length) * 100);
+  const chosen = quizState.answers[quizState.index];
+  stage.innerHTML = `
+    <p class="eyebrow">Question ${quizState.index+1} of ${quizState.questions.length}</p>
+    <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="timer-badge" id="timerBadge"><span class="dot"></span> <span id="timerText"></span></div>
+    ${q.subject ? `<div class="q-meta">${escapeHtml(q.subject)}</div>` : ''}
+    <h2 class="quiz-q" id="quizQText">${escapeHtml(q.text)}</h2>
+    <button class="read-aloud" onclick="readAloud(quizState.questions[quizState.index].text)">🔊 Read aloud</button>
+    <div id="optWrap">
+      ${q.options.map((opt,oi)=>`<button class="opt-btn ${chosen===oi?'selected':''}" data-oi="${oi}" onclick="selectAnswer(${oi})" ${quizState.timerMode==='perQuestion' && quizState.answered ? 'disabled':''}>${escapeHtml(opt)}</button>`).join('')}
+    </div>
+    ${quizState.timerMode==='whole' ? `
+      <div class="btn-row">
+        <button class="btn btn-secondary" ${quizState.index===0?'disabled':''} onclick="prevQuestion()">← Previous</button>
+        <button class="btn btn-primary" onclick="nextOrSubmit()">${quizState.index===quizState.questions.length-1 ? 'Submit quiz' : 'Next →'}</button>
+      </div>` : ''}`;
+  warp();
+  updateTimerUI();
+}
+function startTimer(){
+  clearInterval(quizState.timerHandle);
+  updateTimerUI();
+  quizState.timerHandle = setInterval(()=>{
+    quizState.timeLeft--;
+    updateTimerUI();
+    if(quizState.timeLeft <= 0){
+      clearInterval(quizState.timerHandle);
+      if(quizState.timerMode==='perQuestion'){
+        if(!quizState.answered) lockAnswer(null);
+      } else {
+        finishQuiz();
+      }
+    }
+  }, 1000);
+}
+function updateTimerUI(){
+  const badge = document.getElementById('timerBadge');
+  const text = document.getElementById('timerText');
+  if(!badge) return;
+  if(quizState.timerMode==='perQuestion'){
+    text.textContent = quizState.timeLeft + 's remaining';
+    badge.classList.toggle('low', quizState.timeLeft <= 5);
+  } else {
+    const m = Math.floor(quizState.timeLeft/60), s = quizState.timeLeft%60;
+    text.textContent = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' remaining';
+    badge.classList.toggle('low', quizState.timeLeft <= 30);
+  }
+}
+function selectAnswer(oi){
+  if(quizState.timerMode==='perQuestion'){
+    if(quizState.answered) return;
+    lockAnswer(oi);
+  } else {
+    quizState.answers[quizState.index] = oi;
+    document.querySelectorAll('#optWrap .opt-btn').forEach((b,i)=>b.classList.toggle('selected', i===oi));
+  }
+}
+function lockAnswer(oi){
+  quizState.answered = true;
+  quizState.answers[quizState.index] = oi;
+  clearInterval(quizState.timerHandle);
+  const q = quizState.questions[quizState.index];
+  const buttons = document.querySelectorAll('#optWrap .opt-btn');
+  buttons.forEach(b=>b.disabled = true);
+  if(oi === q.correct){ quizState.correctCount++; playCorrect(); } else { playWrong(); }
+  if(buttons[q.correct]) buttons[q.correct].classList.add('correct');
+  if(oi !== null && oi !== q.correct && buttons[oi]) buttons[oi].classList.add('wrong');
+  setTimeout(()=>{
+    quizState.index++;
+    if(quizState.index >= quizState.questions.length){ finishQuiz(); }
+    else { quizState.answered = false; quizState.timeLeft = cfg.secondsPerQuestion; renderQuiz(); startTimer(); }
+  }, 1000);
+}
+function prevQuestion(){ if(quizState.index>0){ quizState.index--; renderQuiz(); } }
+function nextOrSubmit(){
+  if(quizState.index < quizState.questions.length-1){ quizState.index++; renderQuiz(); }
+  else { finishQuiz(); }
+}
+
+async function finishQuiz(){
+  clearInterval(quizState.timerHandle);
+  let score = 0, total = 0;
+  quizState.questions.forEach((q,i)=>{
+    total += q.marks||1;
+    if(quizState.answers[i]===q.correct) score += q.marks||1;
+  });
+  const percent = total ? Math.round(score/total*100) : 0;
+  const loader = portalLoader('Sealing your result into the scoreboard…', 350);
+  const rec = records.find(r=>r.id===session.recordId);
+  if(rec){ rec.score=score; rec.total=total; rec.percent=percent; rec.status='completed'; rec.date=new Date().toLocaleString(); }
+  writeCache();
+  try{ if(rec) await cloudSaveRecord(rec); setSync('ok'); }catch(e){ setSync('err'); }
+  if(rec) pushRecordToSheet(rec); // fire-and-forget, never blocks the student
+  await loader.close();
+  quizState.finalScore = score; quizState.finalTotal = total; quizState.finalPercent = percent;
+  goto('result');
+}
+
+/* ---------------- Screen: Result ---------------- */
+function renderResult(){
+  const { finalScore, finalTotal, finalPercent } = quizState;
+  const passed = finalPercent >= (cfg.passMark||50);
+  stage.innerHTML = `
+    <div class="result-wrap">
+      <p class="eyebrow">Quiz complete</p>
+      <h2>Nicely done, ${escapeHtml(session.studentName)}</h2>
+      <div class="score-ring" id="scoreRing" style="--pct:0"><div class="num">${finalScore}/${finalTotal}</div></div>
+      <p class="sub" style="margin-bottom:4px">You scored ${finalPercent}% — ${passed ? '✅ Pass' : '❌ Below pass mark'}. Your result is saved to the class scoreboard.</p>
+      <div class="btn-row" style="justify-content:center">
+        <button class="btn btn-primary" onclick="logout()">Back to start</button>
+      </div>
+    </div>`;
+  warp();
+  const ring = document.getElementById('scoreRing');
+  requestAnimationFrame(()=>{ ring.style.setProperty('--pct', finalPercent); });
+  if(passed) burstParticles(ring); 
+}
+function burstParticles(container){
+  const colors = ['#8b6bff','#35d9c4','#f5b942'];
+  for(let i=0;i<24;i++){
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const angle = Math.random()*Math.PI*2, dist = 55 + Math.random()*65;
+    p.style.setProperty('--dx', Math.cos(angle)*dist+'px');
+    p.style.setProperty('--dy', Math.sin(angle)*dist+'px');
+    p.style.left = '50%'; p.style.top = '50%';
+    p.style.background = colors[i%colors.length];
+    p.style.animationDelay = (Math.random()*140)+'ms';
+    container.appendChild(p);
+    setTimeout(()=>p.remove(), 1100);
+  }
+}
+
+/* ---------------- Init ---------------- */
+checkConnection(false);
+</script>
+</body>
+</html>
